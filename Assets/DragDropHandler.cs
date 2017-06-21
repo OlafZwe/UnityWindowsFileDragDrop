@@ -1,4 +1,4 @@
-﻿/* DragDropHandler.cs - v0.1.0 - Olaf Zwennes, 2017 - public domain
+﻿/* DragDropHandler.cs - v0.1.1 - Olaf Zwennes, 2017 - public domain
  * 
  * Handler for receiving Windows file/folder drag and drop events
  * in Unity. Works in editor (play mode) and windowed/fullscreen standalone.
@@ -9,6 +9,7 @@
  *  an array of the full file paths.
  * 
  * VERSION HISTORY
+ *  0.1.1 (2017-06-21)  fix issues with Unity v5.6
  *  0.1.0 (2017-06-21)  initial release
  * 
  * LICENSE
@@ -37,6 +38,11 @@ public class DragDropHandler : MonoBehaviour {
 
     const int WM_DROPFILES = 0x0233;
     const int MAX_PATH = 260;
+#if UNITY_EDITOR
+    const string UNITY_WND_CLASS = "UnityContainerWndClass";
+#else
+    const string UNITY_WND_CLASS = "UnityWndClass";
+#endif
 
     [DllImport("kernel32.dll")]
     static extern uint GetCurrentThreadId();
@@ -52,6 +58,9 @@ public class DragDropHandler : MonoBehaviour {
 
     [DllImport("user32.dll")]
     static extern IntPtr CallWindowProc(IntPtr lpPrevWndFunc, IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    static extern int GetClassName(IntPtr hWnd, [Out] StringBuilder lpString, int nMaxCount);
 
     [DllImport("shell32.dll")]
     static extern void DragAcceptFiles(IntPtr hWnd, bool fAccept);
@@ -70,17 +79,16 @@ public class DragDropHandler : MonoBehaviour {
         }
 
         // get unity window handle
-        hMainWindow = GetActiveWindow();
+        hMainWindow = GetThreadWindow();
         // check if we have window handle, try alternative get method
         if (hMainWindow == IntPtr.Zero) {
-            Debug.LogWarning("Unity window not active window");
-            hMainWindow = GetThreadWindow();
+            Debug.LogWarning("Unity window class not found, trying active window");
+            hMainWindow = GetActiveWindow();
         }
         if (hMainWindow == IntPtr.Zero) {
             Debug.LogError("Could not find Unity window handle");
             return;
         }
-
         // create new window proc message handler
         newWndProc = new WndProcDelegate(WndProc);
         newWndProcPtr = Marshal.GetFunctionPointerForDelegate(newWndProc);
@@ -93,26 +101,29 @@ public class DragDropHandler : MonoBehaviour {
     }
     
     IntPtr GetThreadWindow() {
-        // return first window handle associated with current thread
+        // return window handle with correct class associated with current thread
         uint currentThreadId = GetCurrentThreadId();
-        EnumWindowsDelegate enumDelegate = new EnumWindowsDelegate(GetFirstWindowHandle);
+        EnumWindowsDelegate enumDelegate = new EnumWindowsDelegate(GetWindowHandle);
         IntPtr enumDelegatePtr = Marshal.GetFunctionPointerForDelegate(enumDelegate);
         EnumThreadWindows(currentThreadId, enumDelegatePtr, IntPtr.Zero);
 
         return bestHandle;
     }
 
-    bool GetFirstWindowHandle(IntPtr hWnd, IntPtr lParam) {
-        bestHandle = hWnd;
-        return false;
+    bool GetWindowHandle(IntPtr hWnd, IntPtr lParam) {
+        // find handle with Unity window class name
+        StringBuilder className = new StringBuilder(UNITY_WND_CLASS.Length + 1);
+        int classLength = GetClassName(hWnd, className, className.Capacity);
+        if (className.ToString() == UNITY_WND_CLASS) {
+            bestHandle = hWnd;
+        }
+        return true;
     }
 
     IntPtr WndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam) {
         if (msg == WM_DROPFILES) {
             // handle dragged file(s) dropped
             HandleFileDrop(wParam, lParam);
-            // handled file drag and drop
-            return IntPtr.Zero;
         }
         // send message through to old window proc
         return CallWindowProc(oldWndProcPtr, hWnd, msg, wParam, lParam);
