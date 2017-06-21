@@ -113,7 +113,7 @@ public class DragDropHandler : MonoBehaviour {
     bool GetWindowHandle(IntPtr hWnd, IntPtr lParam) {
         // find handle with Unity window class name
         StringBuilder className = new StringBuilder(UNITY_WND_CLASS.Length + 1);
-        int classLength = GetClassName(hWnd, className, className.Capacity);
+        GetClassName(hWnd, className, className.Capacity);
         if (className.ToString() == UNITY_WND_CLASS) {
             bestHandle = hWnd;
         }
