@@ -1,4 +1,4 @@
-﻿/* DragDropHandler.cs - v0.1.1 - Olaf Zwennes, 2017 - public domain
+﻿/* DragDropHandler.cs - v0.1.2 - Olaf Zwennes, 2017 - public domain
  * 
  * Handler for receiving Windows file/folder drag and drop events
  * in Unity. Works in editor (play mode) and windowed/fullscreen standalone.
@@ -9,6 +9,7 @@
  *  an array of the full file paths.
  * 
  * VERSION HISTORY
+ *  0.1.2 (2017-08-11)  support Unicode paths
  *  0.1.1 (2017-06-21)  fix issues with Unity v5.6
  *  0.1.0 (2017-06-21)  initial release
  * 
@@ -37,7 +38,6 @@ public class DragDropHandler : MonoBehaviour {
     IntPtr bestHandle;
 
     const int WM_DROPFILES = 0x0233;
-    const int MAX_PATH = 260;
 #if UNITY_EDITOR
     const string UNITY_WND_CLASS = "UnityContainerWndClass";
 #else
@@ -60,13 +60,13 @@ public class DragDropHandler : MonoBehaviour {
     static extern IntPtr CallWindowProc(IntPtr lpPrevWndFunc, IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
 
     [DllImport("user32.dll")]
-    static extern int GetClassName(IntPtr hWnd, [Out] StringBuilder lpString, int nMaxCount);
+    static extern int GetClassNameW(IntPtr hWnd, [MarshalAs(UnmanagedType.LPWStr)][Out] StringBuilder lpString, int nMaxCount);
 
     [DllImport("shell32.dll")]
     static extern void DragAcceptFiles(IntPtr hWnd, bool fAccept);
 
     [DllImport("shell32.dll")]
-    static extern uint DragQueryFile(IntPtr hDrop, uint iFile, [Out] StringBuilder filename, uint cch);
+    static extern uint DragQueryFileW(IntPtr hDrop, uint iFile, [MarshalAs(UnmanagedType.LPWStr)][Out] StringBuilder filename, uint cch);
 
     [DllImport("shell32.dll")]
     static extern void DragFinish(IntPtr hDrop);
@@ -112,8 +112,8 @@ public class DragDropHandler : MonoBehaviour {
 
     bool GetWindowHandle(IntPtr hWnd, IntPtr lParam) {
         // find handle with Unity window class name
-        StringBuilder className = new StringBuilder(UNITY_WND_CLASS.Length + 1);
-        GetClassName(hWnd, className, className.Capacity);
+        StringBuilder className = new StringBuilder(UNITY_WND_CLASS.Length);
+        GetClassNameW(hWnd, className, className.Capacity + 1);
         if (className.ToString() == UNITY_WND_CLASS) {
             bestHandle = hWnd;
         }
@@ -131,15 +131,15 @@ public class DragDropHandler : MonoBehaviour {
 
     void HandleFileDrop(IntPtr wParam, IntPtr lParam) {
         // number of dragged files dropped
-        uint count = DragQueryFile(wParam, 0xFFFFFFFF, null, 0);
+        uint count = DragQueryFileW(wParam, 0xFFFFFFFF, null, 0);
         string[] filePaths = new string[count];
 
         for (uint i = 0; i < count; ++i) {
             // file path string length
-            int size = (int)DragQueryFile(wParam, i, null, 0);
+            uint size = DragQueryFileW(wParam, i, null, 0);
             // get file path string from message
-            StringBuilder path = new StringBuilder(size + 1);
-            DragQueryFile(wParam, i, path, MAX_PATH);
+            StringBuilder path = new StringBuilder((int)size);
+            DragQueryFileW(wParam, i, path, (uint)path.Capacity + 1);
             filePaths[i] = path.ToString();
         }
         // fire drop event delegate
@@ -172,13 +172,13 @@ software, either in source code form or as a compiled binary, for any purpose,
 commercial or non-commercial, and by any means.
 In jurisdictions that recognize copyright laws, the author or authors of this 
 software dedicate any and all copyright interest in the software to the public
-domain.We make this dedication for the benefit of the public at large and to
-the detriment of our heirs and successors.We intend this dedication to be an
+domain. We make this dedication for the benefit of the public at large and to
+the detriment of our heirs and successors. We intend this dedication to be an
 overt act of relinquishment in perpetuity of all present and future rights to 
 this software under copyright law.
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.IN NO EVENT SHALL THE
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
 AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
 ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
